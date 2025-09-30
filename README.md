@@ -32,25 +32,6 @@ To get started with XarxesLabs:
    - Follow instructions in each lab's README or comments.
    - Install any required dependencies (see below).
 
-## Requirements
-
-- Programming language runtimes (e.g., Python, Java, C++)
-- Package managers (pip, npm, etc.) as needed for specific labs
-- Networking tools (Wireshark, netcat, etc.) for certain experiments
-
-
-## Contributing
-
-Contributions are welcome! Please open issues for bugs or suggestions, and submit pull requests for improvements. See the [CONTRIBUTING.md](CONTRIBUTING.md) if available.
-
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
-## Contact
-
-For questions or feedback, please open an issue or contact [MartaGnarta](https://github.com/MartaGnarta).
-
----
-
-Happy networking!
