@@ -38,16 +38,6 @@ To get started with XarxesLabs:
 - Package managers (pip, npm, etc.) as needed for specific labs
 - Networking tools (Wireshark, netcat, etc.) for certain experiments
 
-## Folder Structure
-
-```
-XarxesLabs/
-├── labs/         # Networking experiments and exercises
-├── src/          # Source code for utilities and examples
-├── docs/         # Documentation and guides
-├── README.md     # Project overview
-└── LICENSE       # License information
-```
 
 ## Contributing
 
