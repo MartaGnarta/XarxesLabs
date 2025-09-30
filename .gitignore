@@ -97,3 +97,22 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Additional XarxesLabs specific ignores
+# Temporary student work files
+**/temp/
+**/tmp/
+**/.DS_Store
+**/Thumbs.db
+
+# Student submission files (should use separate repos)
+**/entregas/
+**/submissions/
+
+# IDE specific files
+**/.vscode/
+**/.idea/
+
+# OS specific files
+**/.DS_Store
+**/desktop.ini
