@@ -8,7 +8,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro; // 👈 Importante: para usar TMP_InputField y TextMeshProUGUI
+using TMPro;
 
 public class TCPServer : MonoBehaviour
 {
