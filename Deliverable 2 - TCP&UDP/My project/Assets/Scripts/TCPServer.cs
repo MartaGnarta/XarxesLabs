@@ -5,105 +5,67 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
+using System.Linq;
 
-public class TCPServer : MonoBehaviour
+public class TCPServer : MonoBehaviour, IServer
 {
-    [Header("UI (TextMeshPro)")]
-    public TMP_InputField serverNameInput;   // Input_ServerName (TMP)
-    public TMP_InputField portInput;         // Input_Port (TMP)
-    public Button startButton;               // Button_StartServer
-    public Button stopButton;                // Button_StopServer
-    public TextMeshProUGUI statusText;       // Text_Status (TMP)
-    public TextMeshProUGUI logText;          // Text_Log (TMP)
-    public TextMeshProUGUI playersText;      // Text_Players (TMP)
-
     private TcpListener listener;
     private CancellationTokenSource cts;
-    private readonly ConcurrentDictionary<TcpClient, string> clients = new ConcurrentDictionary<TcpClient, string>();
-    private readonly ConcurrentQueue<Action> mainThreadActions = new ConcurrentQueue<Action>();
+    private readonly ConcurrentDictionary<TcpClient, string> clients = new();
 
-    void Start()
-    {
-        startButton.onClick.AddListener(OnStartClicked);
-        stopButton.onClick.AddListener(OnStopClicked);
-        stopButton.interactable = false;
+    public event Action<string> OnLog;
+    public event Action<string[]> OnPlayersUpdated;
+    public event Action<string> OnStatusChanged;
 
-        Log("Servidor listo. Pulsa Start Server.");
-        statusText.text = "Stopped";
-    }
-
-    void Update()
-    {
-        while (mainThreadActions.TryDequeue(out var action))
-        {
-            action?.Invoke();
-        }
-    }
-
-    private void OnStartClicked()
+    public void StartServer(string serverName, int port)
     {
         if (listener != null)
         {
-            Log("Servidor ya iniciado.");
+            Log("TCP Server already running");
             return;
         }
 
-        int port = 5000;
-        if (!int.TryParse(portInput.text, out port)) port = 5000;
-        string serverName = string.IsNullOrWhiteSpace(serverNameInput.text) ? "UnityServer" : serverNameInput.text.Trim();
-
-        StartServer(port, serverName);
-    }
-
-    private void OnStopClicked()
-    {
-        StopServer();
-    }
-
-    public void StartServer(int port, string serverName)
-    {
-        try
+        Task.Run(() =>
         {
-            cts = new CancellationTokenSource();
-            listener = new TcpListener(IPAddress.Any, port);
-            listener.Start();
-
-            Enqueue(() =>
+            try
             {
-                statusText.text = "Running";
-                startButton.interactable = false;
-                stopButton.interactable = true;
-            });
+                listener = new TcpListener(IPAddress.Any, port);
+                listener.Start();
 
-            Log($"Servidor iniciado en puerto {port} (Nombre: {serverName}). Esperando conexiones...");
-            Task.Run(() => AcceptLoopAsync(listener, serverName, cts.Token));
-        }
-        catch (Exception ex)
-        {
-            Log("Error iniciando servidor: " + ex.Message);
-        }
+                cts = new CancellationTokenSource();
+                SetStatus("Running (TCP)");
+
+                string localIP = GetLocalIP();
+                Log($"TCP Server started at {localIP}:{port} (Name: {serverName})");
+
+                AcceptClientsLoop(serverName, cts.Token);
+            }
+            catch (Exception ex)
+            {
+                Log("TCPServer start error: " + ex.Message);
+                SetStatus("Stopped");
+            }
+        });
     }
 
-    private async Task AcceptLoopAsync(TcpListener tcpListener, string serverName, CancellationToken token)
+    private async void AcceptClientsLoop(string serverName, CancellationToken token)
     {
         try
         {
             while (!token.IsCancellationRequested)
             {
-                TcpClient client = await tcpListener.AcceptTcpClientAsync().ConfigureAwait(false);
-                string ep = client.Client.RemoteEndPoint?.ToString() ?? "unknown";
-                Enqueue(() => Log($"Conexión entrante: {ep}"));
-                _ = Task.Run(() => HandleClientAsync(client, serverName, token));
+                TcpClient client = await listener.AcceptTcpClientAsync();
+                string endpoint = client.Client.RemoteEndPoint?.ToString() ?? "unknown";
+                Log($"Client connected: {endpoint}");
+                _ = HandleClientAsync(client, serverName, token);
             }
         }
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            Enqueue(() => Log("Error en AcceptLoop: " + ex.Message));
+            Log("TCP Accept loop error: " + ex.Message);
+            StopServer();
         }
     }
 
@@ -117,95 +79,86 @@ public class TCPServer : MonoBehaviour
 
             while (!token.IsCancellationRequested)
             {
-                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
+                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, token);
                 if (bytesRead == 0) break;
 
-                string text = Encoding.UTF8.GetString(buffer, 0, bytesRead).Trim();
-                Enqueue(() => Log($"Recv [{endpoint}]: {text}"));
+                string msg = Encoding.UTF8.GetString(buffer, 0, bytesRead).Trim();
+                Log($"Recv [{endpoint}]: {msg}");
 
-                if (text.StartsWith("NAME:"))
+                if (msg.StartsWith("NAME:"))
                 {
-                    string username = text.Substring(5).Trim();
+                    string username = msg.Substring(5).Trim();
                     clients[client] = username;
-                    Enqueue(UpdatePlayers);
+                    UpdatePlayers();
                     byte[] reply = Encoding.UTF8.GetBytes("SERVERNAME:" + serverName);
                     await stream.WriteAsync(reply, 0, reply.Length, token);
                 }
-                else if (text.StartsWith("MSG:"))
+                else if (msg.StartsWith("MSG:"))
                 {
-                    string msg = text.Substring(4).Trim();
+                    string message = msg.Substring(4).Trim();
                     string username = clients.TryGetValue(client, out var n) ? n : endpoint;
-                    Enqueue(() => Log($"CHAT {username}: {msg}"));
-                    await BroadcastAsync($"MSG_FROM:{username}:{msg}");
+                    Log($"{username}: {message}");
                 }
             }
         }
         catch (Exception ex)
         {
-            Enqueue(() => Log($"Error cliente {endpoint}: {ex.Message}"));
+            Log($"Client error [{endpoint}]: {ex.Message}");
         }
         finally
         {
             clients.TryRemove(client, out _);
             try { client.Close(); } catch { }
-            Enqueue(() =>
-            {
-                UpdatePlayers();
-                Log($"Cliente desconectado: {endpoint}");
-            });
+            UpdatePlayers();
+            Log($"Client disconnected: {endpoint}");
         }
     }
-
-    private async Task BroadcastAsync(string msg)
-    {
-        byte[] data = Encoding.UTF8.GetBytes(msg);
-        foreach (var c in clients.Keys)
-        {
-            try
-            {
-                if (c.Connected)
-                    await c.GetStream().WriteAsync(data, 0, data.Length);
-            }
-            catch { }
-        }
-    }
-
-    private void UpdatePlayers()
-    {
-        if (clients.Count == 0) playersText.text = "Players: (ninguno)";
-        else playersText.text = "Players:\n" + string.Join("\n", clients.Values);
-    }
-
-    private void Log(string s)
-    {
-        Debug.Log(s);
-        Enqueue(() =>
-        {
-            logText.text += $"[{DateTime.Now:HH:mm:ss}] {s}\n";
-        });
-    }
-
-    private void Enqueue(Action a) => mainThreadActions.Enqueue(a);
 
     public void StopServer()
     {
-        cts?.Cancel();
-        listener?.Stop();
-        listener = null;
-
-        foreach (var c in clients.Keys)
-            try { c.Close(); } catch { }
-
-        clients.Clear();
-        Enqueue(() =>
+        try
         {
-            statusText.text = "Stopped";
-            startButton.interactable = true;
-            stopButton.interactable = false;
-            Log("Servidor detenido.");
+            cts?.Cancel();
+            listener?.Stop();
+            listener = null;
+
+            foreach (var c in clients.Keys) try { c.Close(); } catch { }
+            clients.Clear();
+
+            SetStatus("Stopped");
             UpdatePlayers();
-        });
+            Log("TCP Server stopped");
+        }
+        catch (Exception ex)
+        {
+            Log("TCPServer stop error: " + ex.Message);
+        }
     }
 
-    void OnApplicationQuit() => StopServer();
+    #region Helpers
+    private void Log(string msg) => UnityMainThreadDispatcher.Enqueue(() => OnLog?.Invoke(msg));
+    private void UpdatePlayers() => UnityMainThreadDispatcher.Enqueue(() =>
+        OnPlayersUpdated?.Invoke(clients.Values.Count == 0 ? Array.Empty<string>() : clients.Values.ToArray())
+    );
+    private void SetStatus(string status) => UnityMainThreadDispatcher.Enqueue(() => OnStatusChanged?.Invoke(status));
+
+    private string GetLocalIP()
+    {
+        string localIP = "127.0.0.1";
+        try
+        {
+            var host = Dns.GetHostEntry(Dns.GetHostName());
+            foreach (var ip in host.AddressList)
+            {
+                if (ip.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    localIP = ip.ToString();
+                    break;
+                }
+            }
+        }
+        catch { }
+        return localIP;
+    }
+    #endregion
 }

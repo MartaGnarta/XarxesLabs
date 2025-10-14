@@ -1,18 +1,19 @@
 ﻿using System;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
-public class TCPClient : MonoBehaviour, IClient
+public class UDPClient : MonoBehaviour, IClient
 {
     public event Action<string> OnLog;
     public event Action<string> OnStatusChanged;
     public event Action<string> OnChatMessage;
 
-    private TcpClient client;
-    private NetworkStream stream;
+    private UdpClient udp;
+    private IPEndPoint serverEndPoint;
     private CancellationTokenSource cts;
     private string playerName;
 
@@ -21,13 +22,12 @@ public class TCPClient : MonoBehaviour, IClient
         try
         {
             this.playerName = playerName;
-            client = new TcpClient();
-            await client.ConnectAsync(ip, port);
-            stream = client.GetStream();
+            udp = new UdpClient();
+            serverEndPoint = new IPEndPoint(IPAddress.Parse(ip), port);
             cts = new CancellationTokenSource();
 
-            OnLog?.Invoke($"Conectado a {ip}:{port} (TCP)");
-            OnStatusChanged?.Invoke("Connected (TCP)");
+            OnLog?.Invoke($"Conectado a {ip}:{port} (UDP)");
+            OnStatusChanged?.Invoke("Connected (UDP)");
 
             // Enviar nombre
             await SendRawAsync($"NAME:{playerName}");
@@ -36,22 +36,20 @@ public class TCPClient : MonoBehaviour, IClient
         }
         catch (Exception ex)
         {
-            OnLog?.Invoke($"❌ Error al conectar (TCP): {ex.Message}");
+            OnLog?.Invoke($"❌ Error al conectar (UDP): {ex.Message}");
             OnStatusChanged?.Invoke("Disconnected");
         }
     }
 
     private async Task ListenLoop(CancellationToken token)
     {
-        byte[] buffer = new byte[1024];
-        try
+        while (!token.IsCancellationRequested)
         {
-            while (!token.IsCancellationRequested)
+            try
             {
-                int bytes = await stream.ReadAsync(buffer, 0, buffer.Length, token);
-                if (bytes == 0) break;
+                var result = await udp.ReceiveAsync();
+                string msg = Encoding.UTF8.GetString(result.Buffer).Trim();
 
-                string msg = Encoding.UTF8.GetString(buffer, 0, bytes).Trim();
                 UnityMainThreadDispatcher.Enqueue(() => OnLog?.Invoke($"Server: {msg}"));
 
                 if (msg.StartsWith("MSG_FROM:"))
@@ -60,19 +58,16 @@ public class TCPClient : MonoBehaviour, IClient
                     UnityMainThreadDispatcher.Enqueue(() => OnChatMessage?.Invoke(content));
                 }
             }
+            catch (Exception ex)
+            {
+                if (!token.IsCancellationRequested)
+                    UnityMainThreadDispatcher.Enqueue(() => OnLog?.Invoke($"UDP Error: {ex.Message}"));
+            }
         }
-        catch (Exception ex)
-        {
-            if (!token.IsCancellationRequested)
-                UnityMainThreadDispatcher.Enqueue(() => OnLog?.Invoke($"TCP Error: {ex.Message}"));
-        }
-
-        Disconnect();
     }
 
     public async void SendChatMessage(string message)
     {
-        if (client == null || !client.Connected) return;
         await SendRawAsync($"MSG:{message}");
     }
 
@@ -81,11 +76,11 @@ public class TCPClient : MonoBehaviour, IClient
         try
         {
             byte[] data = Encoding.UTF8.GetBytes(msg);
-            await stream.WriteAsync(data, 0, data.Length);
+            await udp.SendAsync(data, data.Length, serverEndPoint);
         }
         catch (Exception ex)
         {
-            OnLog?.Invoke($"Error enviando mensaje TCP: {ex.Message}");
+            OnLog?.Invoke($"Error enviando mensaje UDP: {ex.Message}");
         }
     }
 
@@ -94,13 +89,12 @@ public class TCPClient : MonoBehaviour, IClient
         try
         {
             cts?.Cancel();
-            stream?.Close();
-            client?.Close();
-            OnLog?.Invoke("Desconectado del servidor TCP.");
+            udp?.Close();
+            OnLog?.Invoke("Desconectado del servidor UDP.");
         }
         catch (Exception ex)
         {
-            OnLog?.Invoke($"Error al desconectar TCP: {ex.Message}");
+            OnLog?.Invoke($"Error al desconectar UDP: {ex.Message}");
         }
 
         OnStatusChanged?.Invoke("Disconnected");
