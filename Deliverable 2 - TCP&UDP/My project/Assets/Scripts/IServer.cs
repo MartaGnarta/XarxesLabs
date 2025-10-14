@@ -7,4 +7,5 @@ public interface IServer
     event Action<string> OnLog;
     event Action<string[]> OnPlayersUpdated;
     event Action<string> OnStatusChanged;
+    void BroadcastServerMessage(string message);
 }

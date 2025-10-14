@@ -18,6 +18,16 @@ public class TCPServer : MonoBehaviour, IServer
     public event Action<string[]> OnPlayersUpdated;
     public event Action<string> OnStatusChanged;
 
+    private readonly ConcurrentQueue<Action> mainThreadActions = new();
+
+    void Update()
+    {
+        while (mainThreadActions.TryDequeue(out var action))
+            action?.Invoke();
+    }
+
+    private void Enqueue(Action a) => mainThreadActions.Enqueue(a);
+
     public void StartServer(string serverName, int port)
     {
         if (listener != null)
@@ -30,14 +40,13 @@ public class TCPServer : MonoBehaviour, IServer
         {
             try
             {
-                listener = new TcpListener(IPAddress.Any, port);
+                listener = new TcpListener(IPAddress.Parse("127.0.0.1"), port);
                 listener.Start();
 
                 cts = new CancellationTokenSource();
                 SetStatus("Running (TCP)");
 
-                string localIP = GetLocalIP();
-                Log($"TCP Server started at {localIP}:{port} (Name: {serverName})");
+                Log($"TCP Server started at 127.0.0.1:{port} (Name: {serverName})");
 
                 AcceptClientsLoop(serverName, cts.Token);
             }
@@ -98,6 +107,7 @@ public class TCPServer : MonoBehaviour, IServer
                     string message = msg.Substring(4).Trim();
                     string username = clients.TryGetValue(client, out var n) ? n : endpoint;
                     Log($"{username}: {message}");
+                    BroadcastServerMessage($"{username}: {message}");
                 }
             }
         }
@@ -112,6 +122,18 @@ public class TCPServer : MonoBehaviour, IServer
             UpdatePlayers();
             Log($"Client disconnected: {endpoint}");
         }
+    }
+
+    public async void BroadcastServerMessage(string message)
+    {
+        try
+        {
+            byte[] data = Encoding.UTF8.GetBytes($"MSG_FROM:SERVER:{message}");
+            foreach (var c in clients.Keys)
+                if (c.Connected)
+                    await c.GetStream().WriteAsync(data, 0, data.Length);
+        }
+        catch (Exception ex) { Log("Error sending server message: " + ex.Message); }
     }
 
     public void StopServer()
@@ -141,24 +163,5 @@ public class TCPServer : MonoBehaviour, IServer
         OnPlayersUpdated?.Invoke(clients.Values.Count == 0 ? Array.Empty<string>() : clients.Values.ToArray())
     );
     private void SetStatus(string status) => UnityMainThreadDispatcher.Enqueue(() => OnStatusChanged?.Invoke(status));
-
-    private string GetLocalIP()
-    {
-        string localIP = "127.0.0.1";
-        try
-        {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            foreach (var ip in host.AddressList)
-            {
-                if (ip.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    localIP = ip.ToString();
-                    break;
-                }
-            }
-        }
-        catch { }
-        return localIP;
-    }
     #endregion
 }
