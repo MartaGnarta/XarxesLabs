@@ -97,7 +97,7 @@ This project is a **network chat system** built in **Unity**, allowing multiple 
 
 A complete walkthrough of the project, showing server and client functionality in action:  
 
-🎬 [Watch Demo on YouTube](https://youtu.be/2WgI0VluqFw?si=SD1GDDbxUlIM0Ohc)
+🎬 [Watch Demo on YouTube](https://youtu.be/mvyMdP994eE?si=8M0AJ5YvtH4uaH9e)
 
 ---
 
