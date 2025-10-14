@@ -97,10 +97,10 @@ This project is a **network chat system** built in **Unity**, allowing multiple 
 
 A complete walkthrough of the project, showing server and client functionality in action:  
 
-🎬 [Watch Demo on YouTube](https://www.youtube.com/watch?v=EXAMPLE)
+🎬 [Watch Demo on YouTube](https://youtu.be/2WgI0VluqFw?si=SD1GDDbxUlIM0Ohc)
 
 ---
 
 ## License
 
-This project is open for educational and demonstration purposes.
+This project is open for educational and demonstration purposes. CITM UPC - Disseny i Desenvolupament de Videojocs. Xarxes i Jocs Online. 2025
