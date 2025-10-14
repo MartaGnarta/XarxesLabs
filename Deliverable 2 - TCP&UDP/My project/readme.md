@@ -103,4 +103,4 @@ A complete walkthrough of the project, showing server and client functionality i
 
 ## License
 
-This project is open for educational and demonstration purposes. CITM UPC - Disseny i Desenvolupament de Videojocs. Xarxes i Jocs Online. 2025
+This project is open for educational and demonstration purposes. CITM UPC - Disseny i Desenvolupament de Videojocs. Xarxes i Jocs Online. 2025. Marta Jover Valero.
